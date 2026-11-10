@@ -18,7 +18,6 @@ def run_web():
     port = int(os.environ.get("PORT", 10000))
     app_web.run(host="0.0.0.0", port=port)
 
-user_languages = {}
 custom_welcomes = {}
 target_group_id = None
 post_queue = [] 
@@ -26,7 +25,6 @@ post_queue = []
 BAD_WORDS = ["ስድብ1", "ስድብ2", "badword1", "badword2"]
 URL_PATTERN = r"(https?://[^\s]+|t\.me/[^\s]+|www\.[^\s]+)"
 
-# 1. /start ትዕዛዝ ሲጻፍ ልክ እንደ ስክሪንሾቱ ውብ ቁልፎችን ማሳየት
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [KeyboardButton("⚙️ Your groups"), KeyboardButton("🎈 Add to group")],
@@ -116,12 +114,6 @@ async def add_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     post_queue.append(post_text)
     await message.reply_text("✅ ፖስቱ በተሳካ ሁኔታ ተመዝግቧል! በቅርቡ ወደ ግሩፕ ይለቀቃል።")
 
-async def scheduled_poster(context: ContextTypes.DEFAULT_TYPE):
-    if target_group_id and post_queue:
-        current_post = post_queue.pop(0)
-        await context.bot.send_message(chat_id=target_group_id, text=f"📢 **አዲስ ማስታወቂያ/ፖስት**\n\n{current_post}", parse_mode="Markdown")
-
-# 2. በቁልፎቹ ላይ የሚደረጉ ንክኪዎችን መቆጣጠር (Button Clicks Response)
 async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not message.text:
@@ -131,7 +123,6 @@ async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFA
     user_id = message.from_user.id
     chat_id = message.chat.id
 
-    # የቁልፍ ምርጫዎችን መለየት
     if text == "⚙️ Your groups":
         await message.reply_text("📋 የእርስዎ ግሩፖች ዝርዝር በዚህ መልኩ ይቀርባል:")
         return
@@ -162,7 +153,6 @@ async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFA
         await message.reply_text("🤖 አዲስ የቻናል ማኔጅመንት ቦት በቅርቡ ይመጣል።")
         return
 
-    # መደበኛ የሊንክ እና ስድብ ማጣሪያ
     try:
         member = await context.bot.get_chat_member(chat_id, user_id)
         is_admin = member.status in ['creator', 'administrator']
@@ -211,9 +201,6 @@ def main():
     application.add_handler(CallbackQueryHandler(button_callback_handler))
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons_and_messages))
-
-    job_queue = application.job_queue
-    job_queue.run_repeating(scheduled_poster, interval=7200, first=20)
 
     print("ቦቱ በሰላም ተጀምሯል...")
     application.run_polling()
