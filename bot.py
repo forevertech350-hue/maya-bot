@@ -1,5 +1,6 @@
 import os
 import re
+import asyncio
 import threading
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -21,6 +22,7 @@ def run_web():
 user_languages = {}
 custom_welcomes = {}
 target_group_id = None
+post_queue = [] # አድሚኖች የጨመሯቸው ፖስቶች የሚቀመጡበት ዝርዝር
 
 BAD_WORDS = ["ስድብ1", "ስድብ2", "badword1", "badword2"]
 URL_PATTERN = r"(https?://[^\s]+|t\.me/[^\s]+|www\.[^\s]+)"
@@ -73,6 +75,14 @@ async def set_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     custom_welcomes[chat_id] = text_args
     await message.reply_text("✅ የእንኳን ደህና መጣችሁ መልእክት ተስተካክሏል!")
 
+# መልእክት ከ 1 ደቂቃ በኋላ በራሱ እንዲጠፋ የሚያደርግ ረዳት ተግባር
+async def delete_after_delay(message, delay=60):
+    await asyncio.sleep(delay)
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
 async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global target_group_id
     if not update.message or not update.message.new_chat_members:
@@ -89,8 +99,47 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if custom_text:
             welcome_msg = custom_text.replace("{name}", name)
         else:
-            welcome_msg = f"እንኳን ደህና መጣህ/ሽ {name} ወደ ግሩፓችን! 🎉"
-        await update.message.reply_text(welcome_msg)
+            welcome_msg = f"እንኳን ወደ ግሩፓችን በደህና መጣችሁ {name}! 🎉"
+        
+        sent_msg = await update.message.reply_text(welcome_msg)
+        # መልእክቱ ከ 60 ሰከንድ (1 ደቂቃ) በኋላ በራሱ እንዲጠፋ ይደረጋል
+        asyncio.create_task(delete_after_delay(sent_msg, 60))
+
+# አድሚኖች ፖስት እንዲያስገቡ የሚረዳ ትዕዛዝ (/addpost)
+async def add_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.message
+    if not message:
+        return
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+
+    try:
+        member = await context.bot.get_chat_member(chat_id, user_id)
+        if member.status not in ['creator', 'administrator']:
+            await message.reply_text("⚠️ ይህንን ትዕዛዝ መጠቀም የሚችሉት አድሚኖች ብቻ ናቸው!")
+            return
+    except Exception:
+        pass
+
+    post_text = " ".join(context.args)
+    if not post_text:
+        await message.reply_text("⚠️ እባክዎ የሚለቀቀውን ጽሁፍ አብረው ይጻፉ።\nምሳሌ: `/addpost የዛሬው ጠቃሚ መረጃ...`", parse_mode="Markdown")
+        return
+
+    post_queue.append(post_text)
+    await message.reply_text("✅ ፖስቱ በተሳካ ሁኔታ ተመዝግቧል! በቅርቡ ወደ ግሩፕ ይለቀቃል።")
+
+# በሰዓቱ አውቶማቲክ ፖስቶችን የሚለቅ ሲስተም
+async def scheduled_poster(application):
+    await asyncio.sleep(20)
+    while True:
+        try:
+            if target_group_id and post_queue:
+                current_post = post_queue.pop(0) # የመጀመሪያውን ፖስት ማውጣት
+                await application.bot.send_message(chat_id=target_group_id, text=f"📢 **አዲስ ማስታወቂያ/ፖስት**\n\n{current_post}", parse_mode="Markdown")
+        except Exception:
+            pass
+        await asyncio.sleep(7200) # በየ 2 ሰዓቱ አንድ ፖስት ይለቀቃል (ማስተካከል ይቻላል)
 
 async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
@@ -143,11 +192,17 @@ def main():
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("setwelcome", set_welcome))
+    application.add_handler(CommandHandler("addpost", add_post))
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_messages))
 
     print("ቦቱ በሰላም ተጀምሯል...")
+    
+    # አውቶማቲክ ፖስት ማከፋፈያ ማስጀመሪያ
+    loop = asyncio.get_event_loop()
+    loop.create_task(scheduled_poster(application))
+
     application.run_polling()
 
 if __name__ == "__main__":
