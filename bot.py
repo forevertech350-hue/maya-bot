@@ -5,10 +5,8 @@ from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
-# Render ከ Environment Variable የሚወስደው ቶክን
 TOKEN = os.environ.get("TOKEN")
 
-# 1. Render ፖርት እንዲያገኝ የሚያደርግ ትንሽዬ የድር ሰርቨር
 app_web = Flask(__name__)
 
 @app_web.route('/')
@@ -19,7 +17,6 @@ def run_web():
     port = int(os.environ.get("PORT", 10000))
     app_web.run(host="0.0.0.0", port=port)
 
-# የተከለከሉ ቃላት እና ሊንክ ማወቂያ
 BAD_WORDS = ["ስድብ1", "ስድብ2", "badword1", "badword2"]
 URL_PATTERN = r"(https?://[^\s]+|t\.me/[^\s]+|www\.[^\s]+)"
 
@@ -53,7 +50,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.delete()
             await context.bot.send_message(chat_id=chat_id, text="⚠️ ከኦነር/አድሚን ውጪ ሊንክ መላክ የተከለከለ ነው!")
         except Exception:
-        end = True
+            pass
         return
 
     if not is_admin:
@@ -72,12 +69,10 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 break
 
 def main():
-    # ሰርቨሩን በሌላ Thread ማስጀመር
     t = threading.Thread(target=run_web)
     t.daemon = True
     t.start()
 
-    # የቴሌግራም ቦት ማስጀመሪያ
     bot_app = ApplicationBuilder().token(TOKEN).build()
     bot_app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_messages))
