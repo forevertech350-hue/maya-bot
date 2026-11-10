@@ -23,7 +23,7 @@ custom_welcomes = {}
 BAD_WORDS = ["ስድብ1", "ስድብ2", "badword1", "badword2"]
 URL_PATTERN = r"(https?://[^\s]+|t\.me/[^\s]+|www\.[^\s]+)"
 
-# 1. /start ሲነካ 3ቱን ቁልፎች ማሳየት
+# 1. /start ትዕዛዝ ሲጻፍ ሶስቱ ቁልፎች መምጣት
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [KeyboardButton("⚙️ Your groups")],
@@ -38,7 +38,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
 
-# መልእክት ከ 1 ደቂቃ (60 ሰከንድ) በኋላ በራሱ እንዲጠፋ የሚያደርግ ተግባር
+# መልእክት ከ 1 ደቂቃ (60 ሰከንድ) በኋላ በራሱ እንዲጠፋ የሚያደርግ ረዳት
 async def delete_after_delay(message, delay=60):
     await asyncio.sleep(delay)
     try:
@@ -46,7 +46,7 @@ async def delete_after_delay(message, delay=60):
     except Exception:
         pass
 
-# 2. አዲስ ሰው ሲገባ የ 1 ደቂቃ ቆይታ ያለው ሰላምታ መላክ
+# 2. አዲስ ሰው ሲገባ ሰላምታ ሰጥቶ ከ 1 ደቂቃ በኋላ ማጥፋት
 async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.new_chat_members:
         return
@@ -63,12 +63,10 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
         else:
             welcome_msg = f"እንኳን ወደ ግሩፓችን በደህና መጣችሁ {name}! 🎉"
         
-        # ሰላምታ መላክ
         sent_msg = await update.message.reply_text(welcome_msg)
-        # መልእክቱ ከ 60 ሰከንድ (1 ደቂቃ) በኋላ በራሱ እንዲጠፋ ማድረግ
         asyncio.create_task(delete_after_delay(sent_msg, 60))
 
-# 3. ቁልፎችን እና የሊንክ/ስድብ ማጣሪያዎችን መቆጣጠር
+# 3. ቁልፎችን እና የሊንክ ጥበቃን መቆጣጠር
 async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not message.text:
@@ -78,7 +76,7 @@ async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFA
     user_id = message.from_user.id
     chat_id = message.chat.id
 
-    # የቁልፎች ምላሽ (በPrivate Chat ውስጥ ሲነኩ)
+    # የቁልፎች ምላሾች (Private Chat)
     if text == "⚙️ Your groups":
         await message.reply_text("📋 **የእርስዎ ግሩፖች ዝርዝር:**\n\nእስካሁን ምንም ግሩፕ አልጨመሩም። 'Add to group' በመጫን ቦቱን ወደ ግሩፕዎ ይጨምሩ!")
         return
@@ -98,16 +96,16 @@ async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFA
         await message.reply_text("እባክዎ የሚፈልጉትን ቋንቋ ይምረጡ / Choose your language:", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
-    # ግሩፕ ውስጥ የሚደረጉ ጥበቃዎች (Owner እና Admin ብቻ ናቸው ሊንክ መላክ የሚችሉት)
-    if chat_id < 0:
+    # ግሩፕ ውስጥ የሚደረግ ጥብቅ የሊንክ ቁጥጥር (Owner እና Admin ብቻ)
+    if chat_id < 0: # ግሩፕ መሆኑን ማረጋገጫ
         try:
             member = await context.bot.get_chat_member(chat_id, user_id)
-            # አድሚን ወይም ባለቤት (Creator/Administrator) መሆኑን ማረጋገጥ
+            # አድሚን ወይም ባለቤት (Creator / Administrator) መሆኑን ማረጋገጥ
             is_admin = member.status in ['creator', 'administrator']
         except Exception:
             is_admin = False
 
-        # አድሚን ያልሆነ ሰው ሊንክ ሲልክ በጸጥታ ማጥፋት (Silent Delete)
+        # አድሚን ወይም ኦነር ካልሆነ እና ሊንክ ከላከ ወዲያውኑ በጸጥታ ማጥፋት
         if not is_admin and re.search(URL_PATTERN, text, re.IGNORECASE):
             try:
                 await message.delete()
@@ -115,7 +113,7 @@ async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFA
                 pass
             return
 
-        # አድሚን ያልሆነ ሰው ስድብ ሲጽፍ ማጥፋት
+        # ስድብ መቆጣጠር
         if not is_admin:
             for word in BAD_WORDS:
                 if word.lower() in text.lower():
