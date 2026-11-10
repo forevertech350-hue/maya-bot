@@ -1,5 +1,6 @@
 import os
 import re
+import asyncio
 import threading
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
@@ -22,7 +23,7 @@ custom_welcomes = {}
 BAD_WORDS = ["ስድብ1", "ስድብ2", "badword1", "badword2"]
 URL_PATTERN = r"(https?://[^\s]+|t\.me/[^\s]+|www\.[^\s]+)"
 
-# 1. /start ትዕዛዝ ሲጻፍ 3ቱ ቁልፎች ብቻ እንዲመጡ ማድረግ
+# 1. /start ሲነካ 3ቱን ቁልፎች ማሳየት
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [KeyboardButton("⚙️ Your groups")],
@@ -37,7 +38,37 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
 
-# 2. ቁልፎቹ ሲነኩ የሚሰጡት ምላሾች
+# መልእክት ከ 1 ደቂቃ (60 ሰከንድ) በኋላ በራሱ እንዲጠፋ የሚያደርግ ተግባር
+async def delete_after_delay(message, delay=60):
+    await asyncio.sleep(delay)
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+# 2. አዲስ ሰው ሲገባ የ 1 ደቂቃ ቆይታ ያለው ሰላምታ መላክ
+async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.new_chat_members:
+        return
+    
+    chat_id = update.message.chat_id
+    custom_text = custom_welcomes.get(chat_id)
+
+    for member in update.message.new_chat_members:
+        if member.id == context.bot.id:
+            continue
+        name = member.first_name
+        if custom_text:
+            welcome_msg = custom_text.replace("{name}", name)
+        else:
+            welcome_msg = f"እንኳን ወደ ግሩፓችን በደህና መጣችሁ {name}! 🎉"
+        
+        # ሰላምታ መላክ
+        sent_msg = await update.message.reply_text(welcome_msg)
+        # መልእክቱ ከ 60 ሰከንድ (1 ደቂቃ) በኋላ በራሱ እንዲጠፋ ማድረግ
+        asyncio.create_task(delete_after_delay(sent_msg, 60))
+
+# 3. ቁልፎችን እና የሊንክ/ስድብ ማጣሪያዎችን መቆጣጠር
 async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not message.text:
@@ -47,37 +78,16 @@ async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFA
     user_id = message.from_user.id
     chat_id = message.chat.id
 
-    # A. Your groups: ተጠቃሚው ቦቱን አድሚን ያደረገባቸውን ግሩፖች ማሳየት
+    # የቁልፎች ምላሽ (በPrivate Chat ውስጥ ሲነኩ)
     if text == "⚙️ Your groups":
-        # እዚህ ጋር ተጠቃሚው ያስተዳደረባቸው ግሩፖች ዝርዝር ይቀርባል
-        await message.reply_text(
-            "📋 **የእርስዎ ግሩፖች ዝርዝር:**\n\n"
-            "• እስካሁን ምንም ግሩፕ አልጨመሩም።\n"
-            "ጠቃሚ ምክር: 'Add to group' በመጫን ቦቱን ወደ ግሩፕዎ ይጨምሩ!"
-        )
+        await message.reply_text("📋 **የእርስዎ ግሩፖች ዝርዝር:**\n\nእስካሁን ምንም ግሩፕ አልጨመሩም። 'Add to group' በመጫን ቦቱን ወደ ግሩፕዎ ይጨምሩ!")
         return
-
-    # B. Add to group: ቦቱን ወደ ግሩፕ ለመጨመር እና አድሚን እንዲሆን የማድረግ ሊንክ
     elif text == "🎈 Add to group":
         bot_username = context.bot.username
         add_link = f"https://t.me/{bot_username}?startgroup=true&admin=post_messages+delete_messages+invite_users+manage_chat"
-        
-        keyboard = [
-            [InlineKeyboardButton("➕ ቦቱን ወደ ግሩፕዎ ይጨምሩ", url=add_link)]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await message.reply_text(
-            "🤖 **ቦቱን ወደ ግሩፕዎ ለመጨመር:**\n\n"
-            "1. ከታች ያለውን ቁልፍ ይጫኑ።\n"
-            "2. ቦቱ የሚጨመርበትን ግሩፕ ይምረጡ።\n"
-            "3. ግሩፕ ውስጥ **Admin** ማረጋገጫ (Permissions) ሰጥተው ያስገቡት።\n"
-            "አንዴ አድሚን ካደረጉት ቦቱ ግሩፑን ሙሉ በሙሉ መቆጣጠር ይጀምራል!",
-            reply_markup=reply_markup
-        )
+        keyboard = [[InlineKeyboardButton("➕ ቦቱን ወደ ግሩፕዎ ይጨምሩ", url=add_link)]]
+        await message.reply_text("🤖 **ቦቱን ወደ ግሩፕዎ ለማስገባት እና አድሚን ለማድረግ ከታች ያለውን ቁልፍ ይጫኑ:**", reply_markup=InlineKeyboardMarkup(keyboard))
         return
-
-    # C. Language: ቋንቋ መቀየሪያ (አማርኛ እና እንግሊዝኛ)
     elif text == "🚩 Language":
         keyboard = [
             [
@@ -85,18 +95,19 @@ async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFA
                 InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")
             ]
         ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await message.reply_text("እባክዎ የሚፈልጉትን ቋንቋ ይምረጡ / Please choose your language:", reply_markup=reply_markup)
+        await message.reply_text("እባክዎ የሚፈልጉትን ቋንቋ ይምረጡ / Choose your language:", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
-    # ግሩፕ ውስጥ የሚደረጉ የሊንክ እና ስድብ ማጣሪያዎች
-    if chat_id < 0: # ግሩፕ ከሆነ ብቻ
+    # ግሩፕ ውስጥ የሚደረጉ ጥበቃዎች (Owner እና Admin ብቻ ናቸው ሊንክ መላክ የሚችሉት)
+    if chat_id < 0:
         try:
             member = await context.bot.get_chat_member(chat_id, user_id)
+            # አድሚን ወይም ባለቤት (Creator/Administrator) መሆኑን ማረጋገጥ
             is_admin = member.status in ['creator', 'administrator']
         except Exception:
             is_admin = False
 
+        # አድሚን ያልሆነ ሰው ሊንክ ሲልክ በጸጥታ ማጥፋት (Silent Delete)
         if not is_admin and re.search(URL_PATTERN, text, re.IGNORECASE):
             try:
                 await message.delete()
@@ -104,6 +115,7 @@ async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFA
                 pass
             return
 
+        # አድሚን ያልሆነ ሰው ስድብ ሲጽፍ ማጥፋት
         if not is_admin:
             for word in BAD_WORDS:
                 if word.lower() in text.lower():
@@ -118,7 +130,7 @@ async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFA
                         pass
                     break
 
-# 3. የቋንቋ ምርጫ ማስተካከያ (Inline Button Callback)
+# 4. የቋንቋ መምረጫ Callback
 async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -126,10 +138,10 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 
     if query.data == "lang_am":
         user_languages[chat_id] = "am"
-        await query.edit_message_text(text="✅ ቋንቋ ወደ **አማርኛ** ተቀይሯል። አሁን ቦቱ ዝግጁ ነው!")
+        await query.edit_message_text(text="✅ ቋንቋ ወደ **አማርኛ** ተቀይሯል።")
     elif query.data == "lang_en":
         user_languages[chat_id] = "en"
-        await query.edit_message_text(text="✅ Language changed to **English**. Bot is ready!")
+        await query.edit_message_text(text="✅ Language changed to **English**.")
 
 def main():
     t = threading.Thread(target=run_web)
@@ -140,6 +152,7 @@ def main():
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_callback_handler))
+    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons_and_messages))
 
     print("ቦቱ በሰላም ተጀምሯል...")
