@@ -21,9 +21,10 @@ def run_web():
 user_languages = {}
 custom_welcomes = {}
 BAD_WORDS = ["ስድብ1", "ስድብ2", "badword1", "badword2"]
-URL_PATTERN = r"(https?://[^\s]+|t\.me/[^\s]+|www\.[^\s]+)"
 
-# 1. /start ትዕዛዝ ሲጻፍ ሶስቱ ቁልፎች መምጣት
+# የተሻሻለው ፖተርን፡ ሊንኮችን እና በ @ የሚጀምሩ ዩዘርናሞችን ሙሉ በሙሉ ይይዛል
+URL_PATTERN = r"(https?://[^\s]+|t\.me/[^\s]+|www\.[^\s]+|@[a-zA-Z0-9_]{5,})"
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [KeyboardButton("⚙️ Your groups")],
@@ -38,7 +39,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
 
-# መልእክት ከ 1 ደቂቃ (60 ሰከንድ) በኋላ በራሱ እንዲጠፋ የሚያደርግ ረዳት
 async def delete_after_delay(message, delay=60):
     await asyncio.sleep(delay)
     try:
@@ -46,7 +46,6 @@ async def delete_after_delay(message, delay=60):
     except Exception:
         pass
 
-# 2. አዲስ ሰው ሲገባ ሰላምታ ሰጥቶ ከ 1 ደቂቃ በኋላ ማጥፋት
 async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.new_chat_members:
         return
@@ -66,7 +65,6 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
         sent_msg = await update.message.reply_text(welcome_msg)
         asyncio.create_task(delete_after_delay(sent_msg, 60))
 
-# 3. ቁልፎችን እና የሊንክ ጥበቃን መቆጣጠር
 async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not message.text:
@@ -76,15 +74,14 @@ async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFA
     user_id = message.from_user.id
     chat_id = message.chat.id
 
-    # የቁልፎች ምላሾች (Private Chat)
     if text == "⚙️ Your groups":
-        await message.reply_text("📋 **የእርስዎ ግሩፖች ዝርዝር:**\n\nእስካሁን ምንም ግሩፕ አልጨመሩም። 'Add to group' በመጫን ቦቱን ወደ ግሩፕዎ ይጨምሩ!")
+        await message.reply_text("📋 **የእርስዎ ግሩፖች ዝርዝር:**\n\nእስካሁን ምንም ግሩፕ አልጨመሩም።")
         return
     elif text == "🎈 Add to group":
         bot_username = context.bot.username
         add_link = f"https://t.me/{bot_username}?startgroup=true&admin=post_messages+delete_messages+invite_users+manage_chat"
         keyboard = [[InlineKeyboardButton("➕ ቦቱን ወደ ግሩፕዎ ይጨምሩ", url=add_link)]]
-        await message.reply_text("🤖 **ቦቱን ወደ ግሩፕዎ ለማስገባት እና አድሚን ለማድረግ ከታች ያለውን ቁልፍ ይጫኑ:**", reply_markup=InlineKeyboardMarkup(keyboard))
+        await message.reply_text("🤖 **ቦቱን ወደ ግሩፕዎ ለማስገባት ከታች ያለውን ቁልፍ ይጫኑ:**", reply_markup=InlineKeyboardMarkup(keyboard))
         return
     elif text == "🚩 Language":
         keyboard = [
@@ -96,16 +93,15 @@ async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFA
         await message.reply_text("እባክዎ የሚፈልጉትን ቋንቋ ይምረጡ / Choose your language:", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
-    # ግሩፕ ውስጥ የሚደረግ ጥብቅ የሊንክ ቁጥጥር (Owner እና Admin ብቻ)
-    if chat_id < 0: # ግሩፕ መሆኑን ማረጋገጫ
+    # ግሩፕ ውስጥ የሚደረግ ጥብቅ የሊንክ እና የዩዘርናም ቁጥጥር (Owner እና Admin ብቻ)
+    if chat_id < 0:
         try:
             member = await context.bot.get_chat_member(chat_id, user_id)
-            # አድሚን ወይም ባለቤት (Creator / Administrator) መሆኑን ማረጋገጥ
             is_admin = member.status in ['creator', 'administrator']
         except Exception:
             is_admin = False
 
-        # አድሚን ወይም ኦነር ካልሆነ እና ሊንክ ከላከ ወዲያውኑ በጸጥታ ማጥፋት
+        # አድሚን ወይም ኦነር ካልሆነ እና ሊንክ ወይም @ ዩዘርናም ከላከ ወዲያውኑ ማጥፋት
         if not is_admin and re.search(URL_PATTERN, text, re.IGNORECASE):
             try:
                 await message.delete()
@@ -113,7 +109,6 @@ async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFA
                 pass
             return
 
-        # ስድብ መቆጣጠር
         if not is_admin:
             for word in BAD_WORDS:
                 if word.lower() in text.lower():
@@ -128,7 +123,6 @@ async def handle_buttons_and_messages(update: Update, context: ContextTypes.DEFA
                         pass
                     break
 
-# 4. የቋንቋ መምረጫ Callback
 async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
