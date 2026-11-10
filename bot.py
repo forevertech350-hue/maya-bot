@@ -22,7 +22,7 @@ def run_web():
 user_languages = {}
 custom_welcomes = {}
 target_group_id = None
-post_queue = [] # አድሚኖች የጨመሯቸው ፖስቶች የሚቀመጡበት ዝርዝር
+post_queue = [] 
 
 BAD_WORDS = ["ስድብ1", "ስድብ2", "badword1", "badword2"]
 URL_PATTERN = r"(https?://[^\s]+|t\.me/[^\s]+|www\.[^\s]+)"
@@ -75,7 +75,6 @@ async def set_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     custom_welcomes[chat_id] = text_args
     await message.reply_text("✅ የእንኳን ደህና መጣችሁ መልእክት ተስተካክሏል!")
 
-# መልእክት ከ 1 ደቂቃ በኋላ በራሱ እንዲጠፋ የሚያደርግ ረዳት ተግባር
 async def delete_after_delay(message, delay=60):
     await asyncio.sleep(delay)
     try:
@@ -102,10 +101,8 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
             welcome_msg = f"እንኳን ወደ ግሩፓችን በደህና መጣችሁ {name}! 🎉"
         
         sent_msg = await update.message.reply_text(welcome_msg)
-        # መልእክቱ ከ 60 ሰከንድ (1 ደቂቃ) በኋላ በራሱ እንዲጠፋ ይደረጋል
         asyncio.create_task(delete_after_delay(sent_msg, 60))
 
-# አድሚኖች ፖስት እንዲያስገቡ የሚረዳ ትዕዛዝ (/addpost)
 async def add_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message:
@@ -129,17 +126,11 @@ async def add_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     post_queue.append(post_text)
     await message.reply_text("✅ ፖስቱ በተሳካ ሁኔታ ተመዝግቧል! በቅርቡ ወደ ግሩፕ ይለቀቃል።")
 
-# በሰዓቱ አውቶማቲክ ፖስቶችን የሚለቅ ሲስተም
-async def scheduled_poster(application):
-    await asyncio.sleep(20)
-    while True:
-        try:
-            if target_group_id and post_queue:
-                current_post = post_queue.pop(0) # የመጀመሪያውን ፖስት ማውጣት
-                await application.bot.send_message(chat_id=target_group_id, text=f"📢 **አዲስ ማስታወቂያ/ፖስት**\n\n{current_post}", parse_mode="Markdown")
-        except Exception:
-            pass
-        await asyncio.sleep(7200) # በየ 2 ሰዓቱ አንድ ፖስት ይለቀቃል (ማስተካከል ይቻላል)
+# ፖስቶችን በድብቅ በሰዓቱ የሚለቅ ሲስተም (Post Job)
+async def scheduled_poster(context: ContextTypes.DEFAULT_TYPE):
+    if target_group_id and post_queue:
+        current_post = post_queue.pop(0)
+        await context.bot.send_message(chat_id=target_group_id, text=f"📢 **አዲስ ማስታወቂያ/ፖስት**\n\n{current_post}", parse_mode="Markdown")
 
 async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
@@ -197,12 +188,11 @@ def main():
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_messages))
 
-    print("ቦቱ በሰላም ተጀምሯል...")
-    
-    # አውቶማቲክ ፖስት ማከፋፈያ ማስጀመሪያ
-    loop = asyncio.get_event_loop()
-    loop.create_task(scheduled_poster(application))
+    # ጆብ ኪዩብን (Job Queue) በመጠቀም አውቶማቲክ ፖስቶችን ማስተዳደር
+    job_queue = application.job_queue
+    job_queue.run_repeating(scheduled_poster, interval=7200, first=20) # በየ 2 ሰዓቱ ይለቀቃል
 
+    print("ቦቱ በሰላም ተጀምሯል...")
     application.run_polling()
 
 if __name__ == "__main__":
